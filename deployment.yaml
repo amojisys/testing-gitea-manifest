@@ -1,0 +1,97 @@
+###############################
+# Deplyoment Gitea
+###############################
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: testing-gitea
+  namespace: gitea
+  labels:
+    app: testing-gitea
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: testing-gitea
+  template:
+    metadata:
+      labels:
+        app: testing-gitea
+    spec:
+      containers:
+      - name: gitea
+        image: gitea/gitea:1.17.3
+        ports:
+        - containerPort: 3000
+          name: gitea
+        - containerPort: 22
+          name: git-ssh
+        volumeMounts:
+        - mountPath: /data
+          name: git-data
+      volumes:
+      - name: git-data
+        persistentVolumeClaim:
+          claimName: testing-git-pvc
+###############################
+# Service
+###############################
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: testing-gitea-service
+  namespace: gitea
+spec:
+  selector:
+    app: testing-gitea
+  ports:
+  - name: gitea-http
+    port: 3000
+  - name: gitea-ssh
+    port: 22
+---
+###################################################
+# Ingress
+###################################################
+kind: Ingress
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: testing-gitea-tls
+  namespace: gitea
+  annotations:
+    cert-manager.io/cluster-issuer: "amojisys-prod"
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - testing.gt.amojisys.com
+    secretName: testing-gitea-amojisys-cert
+  rules:
+  - host: testing.gt.amojisys.com
+    http:
+      paths:
+      - path: "/"
+        pathType: Prefix
+        backend:
+          service:
+            name: testing-gitea-service
+            port:
+              number: 3000
+---
+###################################################
+# PVC Claim
+###################################################
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: testing-git-pvc
+  namespace: gitea
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 5Gi
